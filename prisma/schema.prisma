@@ -1,0 +1,113 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  files         File[]
+  sharedFiles   FileShare[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model File {
+  id            String   @id @default(cuid())
+  name          String
+  type          String   // MIME type
+  size          Int      @default(0) // Size in bytes (0 for folders)
+  path          String?  // Storage path (S3 key or local path) - null for folders
+  storageType   String   @default("local") // "local" or "s3"
+  userId        String
+  parentId      String?  // For folder structure - null means root level
+  isFolder      Boolean  @default(false)
+  isStarred     Boolean  @default(false) // Starred files/folders
+  lastAccessedAt DateTime? // Last time file was accessed/downloaded/opened
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime? // Soft delete
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent        File?    @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children      File[]   @relation("FolderChildren")
+  shares        FileShare[]
+
+  @@index([userId])
+  @@index([parentId])
+  @@index([deletedAt])
+  @@index([isStarred])
+  @@index([lastAccessedAt])
+  @@index([userId, parentId, deletedAt]) // Composite index for efficient queries
+}
+
+model FileShare {
+  id        String   @id @default(cuid())
+  fileId    String
+  userId    String   // User who shared the file
+  sharedWithUserId String? // User with whom file is shared (null for public link)
+  sharedWithEmail String? // Email of person shared with (for non-registered users)
+  permission String  @default("viewer") // "viewer", "commenter", or "editor"
+  token     String?  @unique // For public sharing links
+  accessLevel String @default("restricted") // "restricted" or "anyone"
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([userId])
+  @@index([sharedWithUserId])
+  @@index([sharedWithEmail])
+  @@index([token])
+}
+
